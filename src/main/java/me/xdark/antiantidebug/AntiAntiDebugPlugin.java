@@ -101,7 +101,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
         String arg = args.get(i);
         if (arg.startsWith("-javaagent:")
             || arg.startsWith("-agentlib:")
-            || arg.startsWith("-agentpath")
+            || arg.startsWith("-agentpath:")
             || arg.startsWith("-verbose")) {
           args.remove(i--);
         } else if (arg.startsWith("-XX:+DisableAttachMechanism")) {
@@ -156,6 +156,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       if (redefine) {
         byte[] bytecode = ClassUtil.toCode(node, ClassWriter.COMPUTE_FRAMES);
         instrumentation.redefineClasses(new ClassDefinition(jvmClass, bytecode));
+        resetRedefineCount(jvmClass);
       }
     } catch (Throwable t) {
       Log.error(t, "Unable to change runtime flags!");
@@ -175,6 +176,19 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       }
     } catch (Throwable t) {
       Log.error(t, "Unable to 'hide' Attach Listener thread!");
+    }
+  }
+
+  private static void resetRedefineCount(Class<?> klass) {
+    try {
+      Field field = Class.class.getDeclaredField("classRedefinedCount");
+      field.setAccessible(true);
+      field.setInt(klass, 0);
+      field = Class.class.getDeclaredField("reflectionData");
+      field.setAccessible(true);
+      field.set(klass, null);
+    } catch (Throwable t) {
+      Log.error(t, "Failed to reset redefine count for: {}", klass);
     }
   }
 }
