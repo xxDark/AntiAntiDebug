@@ -1,7 +1,9 @@
 package me.xdark.antiantidebug;
 
+import java.io.File;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
+import java.lang.instrument.UnmodifiableClassException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.lang.reflect.Field;
@@ -39,12 +41,13 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       patchSystemPaths();
       patchVMManagement(instrumentation);
       hideAttachThread();
+      patchSystemProperties();
     }
   }
 
   @Override
   public String getVersion() {
-    return "1.0.2";
+    return "1.0.3";
   }
 
   @Override
@@ -124,14 +127,10 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       field = jvmClass.getDeclaredField("vmArgs");
       field.setAccessible(true);
       field.set(jvm, Arrays.asList(args.toArray(new String[0])));
-      ClassReader reader = ClassUtil.fromRuntime(jvmClass.getName());
-      ClassNode node = ClassUtil.getNode(reader, 0);
-      boolean redefine = false;
-      for (MethodNode mn : node.methods) {
-        if ("getVmArguments0".equals(mn.name) && "()[Ljava/lang/String;".equals(mn.desc)) {
-          redefine = true;
+      redefineClass(instrumentation, jvmClass, (owner, method) -> {
+        if ("getVmArguments0".equals(method.name) && "()[Ljava/lang/String;".equals(method.desc)) {
           Log.trace("Transforming VMManagementImpl#getVmArguments0()");
-          mn.access &= ~Opcodes.ACC_NATIVE;
+          method.access &= ~Opcodes.ACC_NATIVE;
           InsnList inject = new InsnList();
           inject.add(new LdcInsnNode(args.size()));
           inject.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
@@ -142,22 +141,19 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
             inject.add(new InsnNode(Opcodes.AASTORE));
           }
           inject.add(new InsnNode(Opcodes.ARETURN));
-          mn.instructions = inject;
-        } else if ("getVerboseClass".equals(mn.name) && "()Z".equals(mn.desc)) {
-          redefine = true;
+          method.instructions = inject;
+          return true;
+        } else if ("getVerboseClass".equals(method.name) && "()Z".equals(method.desc)) {
           Log.trace("Transforming VMManagementImpl#getVerboseClass()");
-          mn.access &= ~Opcodes.ACC_NATIVE;
+          method.access &= ~Opcodes.ACC_NATIVE;
           InsnList inject = new InsnList();
           inject.add(new InsnNode(Opcodes.ICONST_0));
           inject.add(new InsnNode(Opcodes.IRETURN));
-          mn.instructions = inject;
+          method.instructions = inject;
+          return true;
         }
-      }
-      if (redefine) {
-        byte[] bytecode = ClassUtil.toCode(node, ClassWriter.COMPUTE_FRAMES);
-        instrumentation.redefineClasses(new ClassDefinition(jvmClass, bytecode));
-        resetRedefineCount(jvmClass);
-      }
+        return false;
+      });
     } catch (Throwable t) {
       Log.error(t, "Unable to change runtime flags!");
     }
@@ -176,6 +172,42 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       }
     } catch (Throwable t) {
       Log.error(t, "Unable to 'hide' Attach Listener thread!");
+    }
+  }
+
+  private static void patchSystemProperties() {
+    try {
+      String cp = System.getProperty("java.class.path");
+      File file = new File(StartupPlugin.class.getProtectionDomain()
+          .getCodeSource().getLocation().toURI());
+      String separator = File.pathSeparator;
+      for (String entry : cp.split(separator)) {
+        File location = new File(entry);
+        if (file.equals(location)) {
+          cp = cp.replace(separator + entry, "");
+        }
+      }
+      System.setProperty("java.class.path", cp);
+    } catch (Throwable t) {
+      Log.error(t, "Unable to patch system properties!");
+    }
+  }
+
+  private static void redefineClass(Instrumentation instrumentation, Class<?> klass,
+      MethodPatcher methodPatcher)
+      throws UnmodifiableClassException, ClassNotFoundException {
+    ClassReader reader = ClassUtil.fromRuntime(klass.getName());
+    ClassNode node = ClassUtil.getNode(reader, 0);
+    boolean redefine = false;
+    for (MethodNode mn : node.methods) {
+      if (methodPatcher.patch(node, mn)) {
+        redefine = true;
+      }
+    }
+    if (redefine) {
+      byte[] bytecode = ClassUtil.toCode(node, ClassWriter.COMPUTE_FRAMES);
+      instrumentation.redefineClasses(new ClassDefinition(klass, bytecode));
+      resetRedefineCount(klass);
     }
   }
 
