@@ -210,6 +210,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       properties.setProperty("sun.jvm.args", String.join(" ", args));
       Field field = supportClass.getDeclaredField("agentProps");
       field.setAccessible(true);
+      field.set(null, properties;
       redefineClass(instrumentation, supportClass, (owner, method) -> {
         if ("initAgentProperties".equals(method.name)
             && "(Ljava/util/Properties;)Ljava/util/Properties;".equals(method.desc)) {
@@ -237,7 +238,6 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
         }
         return false;
       });
-      field.set(null, null);
     } catch (Throwable t) {
       Log.error(t, "Unable to patch {}", className);
     }
