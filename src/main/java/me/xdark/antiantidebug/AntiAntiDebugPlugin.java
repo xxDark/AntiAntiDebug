@@ -8,12 +8,14 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Properties;
 import me.coley.recaf.control.Controller;
 import me.coley.recaf.plugin.api.StartupPlugin;
 import me.coley.recaf.util.ClassUtil;
@@ -42,6 +44,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       patchVMManagement(instrumentation);
       hideAttachThread();
       patchSystemProperties();
+      patchVM();
     }
   }
 
@@ -176,18 +179,25 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
   private static void patchSystemProperties() {
     try {
       String cp = System.getProperty("java.class.path");
-      File file = new File(StartupPlugin.class.getProtectionDomain()
-          .getCodeSource().getLocation().toURI());
-      String separator = File.pathSeparator;
-      for (String entry : cp.split(separator)) {
-        File location = new File(entry);
-        if (file.equals(location)) {
-          cp = cp.replace(separator + entry, "");
-        }
-      }
-      System.setProperty("java.class.path", cp);
+      File file = getRecafLocation();
+      System.setProperty("java.class.path", patchClassPath(cp, file));
     } catch (Throwable t) {
       Log.error(t, "Unable to patch system properties!");
+    }
+  }
+
+  private static void patchVM() {
+    String className = VMUtil.getVmVersion() > 8 ? "jdk.internal.misc.VM" : "sun.misc.VM";
+    try {
+      Class<?> vmClass = Class.forName(className, true, null);
+      Field field = vmClass.getDeclaredField("savedProps");
+      field.setAccessible(true);
+      Properties properties = (Properties) field.get(null);
+      String cp = properties.getProperty("java.class.path");
+      File file = getRecafLocation();
+      properties.setProperty("java.class.path", patchClassPath(cp, file));
+    } catch (Throwable t) {
+      Log.error(t, "Unable to patch {}", className);
     }
   }
 
@@ -220,5 +230,21 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     } catch (Throwable t) {
       Log.error(t, "Failed to reset redefine count for: {}", klass);
     }
+  }
+
+  private static String patchClassPath(String cp, File toRemove) {
+    String separator = File.pathSeparator;
+    for (String entry : cp.split(separator)) {
+      File location = new File(entry);
+      if (toRemove.equals(location)) {
+        cp = cp.replace(separator + entry, "");
+      }
+    }
+    return cp;
+  }
+
+  private static File getRecafLocation() throws URISyntaxException {
+    return new File(StartupPlugin.class.getProtectionDomain()
+        .getCodeSource().getLocation().toURI());
   }
 }
