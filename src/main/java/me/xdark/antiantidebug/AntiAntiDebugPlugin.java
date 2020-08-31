@@ -40,6 +40,7 @@ import org.plugface.core.annotations.Plugin;
 @Plugin(name = "AntiAntiDebug")
 public final class AntiAntiDebugPlugin implements StartupPlugin {
 
+  private static final boolean DEBUG = false;
   private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
   private static final String ATTACH_FLAG = "-XX:+DisableAttachMechanism";
 
@@ -47,10 +48,12 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
   public void onStart(Controller controller) {
     Instrumentation instrumentation = InstrumentationResource.instrumentation;
     if (instrumentation != null) {
-      try {
-        InstrumentationResource.getInstance().setSkippedPrefixes(Collections.emptyList());
-      } catch (IOException e) {
-        e.printStackTrace();
+      if (DEBUG) {
+        try {
+          InstrumentationResource.getInstance().setSkippedPrefixes(Collections.emptyList());
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
       }
       patchSystemPaths();
       patchVMManagement(instrumentation);
