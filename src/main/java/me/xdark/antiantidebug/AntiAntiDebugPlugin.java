@@ -1,6 +1,7 @@
 package me.xdark.antiantidebug;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 import java.lang.instrument.UnmodifiableClassException;
@@ -14,7 +15,9 @@ import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Properties;
 import me.coley.recaf.control.Controller;
 import me.coley.recaf.plugin.api.StartupPlugin;
@@ -29,6 +32,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.plugface.core.annotations.Plugin;
@@ -36,21 +40,30 @@ import org.plugface.core.annotations.Plugin;
 @Plugin(name = "AntiAntiDebug")
 public final class AntiAntiDebugPlugin implements StartupPlugin {
 
+  private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
+  private static final String ATTACH_FLAG = "-XX:+DisableAttachMechanism";
+
   @Override
   public void onStart(Controller controller) {
     Instrumentation instrumentation = InstrumentationResource.instrumentation;
     if (instrumentation != null) {
+      try {
+        InstrumentationResource.getInstance().setSkippedPrefixes(Collections.emptyList());
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
       patchSystemPaths();
       patchVMManagement(instrumentation);
       hideAttachThread();
       patchSystemProperties();
       patchVM();
+      patchVMSupport(instrumentation);
     }
   }
 
   @Override
   public String getVersion() {
-    return "1.0.3";
+    return "1.0.4";
   }
 
   @Override
@@ -101,27 +114,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     try {
       List<String> args = new ArrayList<>(
           ManagementFactory.getRuntimeMXBean().getInputArguments());
-      boolean foundDisableAttachMechanism = false;
-      boolean foundDisablePerfData = false;
-      for (int i = 0; i < args.size(); i++) {
-        String arg = args.get(i);
-        if (arg.startsWith("-javaagent:")
-            || arg.startsWith("-agentlib:")
-            || arg.startsWith("-agentpath:")
-            || arg.startsWith("-verbose")) {
-          args.remove(i--);
-        } else if (arg.startsWith("-XX:+DisableAttachMechanism")) {
-          foundDisableAttachMechanism = true;
-        } else if (arg.startsWith("-XX:-UsePerfData")) {
-          foundDisablePerfData = true;
-        }
-      }
-      if (!foundDisableAttachMechanism) {
-        args.add(0, "-XX:+DisableAttachMechanism");
-      }
-      if (!foundDisablePerfData) {
-        args.add(0, "-XX:-UsePerfData");
-      }
+      patchArgumentsList(args);
       RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
       Field field = bean.getClass().getDeclaredField("jvm");
       field.setAccessible(true);
@@ -133,6 +126,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       redefineClass(instrumentation, jvmClass, (owner, method) -> {
         if ("getVmArguments0".equals(method.name) && "()[Ljava/lang/String;".equals(method.desc)) {
           Log.trace("Transforming VMManagementImpl#getVmArguments0()");
+          method.access &= ~Opcodes.ACC_NATIVE;
           InsnList inject = new InsnList();
           inject.add(new LdcInsnNode(args.size()));
           inject.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
@@ -147,6 +141,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
           return true;
         } else if ("getVerboseClass".equals(method.name) && "()Z".equals(method.desc)) {
           Log.trace("Transforming VMManagementImpl#getVerboseClass()");
+          method.access &= ~Opcodes.ACC_NATIVE;
           InsnList inject = new InsnList();
           inject.add(new InsnNode(Opcodes.ICONST_0));
           inject.add(new InsnNode(Opcodes.IRETURN));
@@ -180,7 +175,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     try {
       String cp = System.getProperty("java.class.path");
       File file = getRecafLocation();
-      System.setProperty("java.class.path", patchClassPath(cp, file));
+      System.setProperty("java.class.path", patchClassPath(cp, File.pathSeparator, file));
     } catch (Throwable t) {
       Log.error(t, "Unable to patch system properties!");
     }
@@ -195,7 +190,54 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       Properties properties = (Properties) field.get(null);
       String cp = properties.getProperty("java.class.path");
       File file = getRecafLocation();
-      properties.setProperty("java.class.path", patchClassPath(cp, file));
+      properties.setProperty("java.class.path", patchClassPath(cp, File.pathSeparator, file));
+    } catch (Throwable t) {
+      Log.error(t, "Unable to patch {}", className);
+    }
+  }
+
+  private static void patchVMSupport(Instrumentation instrumentation) {
+    String className =
+        VMUtil.getVmVersion() > 8 ? "jdk.internal.misc.VMSupport" : "sun.misc.VMSupport";
+    try {
+      Class<?> supportClass = Class.forName(className, true, null);
+      Method m = supportClass.getDeclaredMethod("initAgentProperties", Properties.class);
+      m.setAccessible(true);
+      Properties properties = (Properties) m.invoke(null, new Properties());
+      String jvmArgs = properties.getProperty("sun.jvm.args");
+      List<String> args = new ArrayList<>(Arrays.asList(jvmArgs.split(" ")));
+      patchArgumentsList(args);
+      properties.setProperty("sun.jvm.args", String.join(" ", args));
+      Field field = supportClass.getDeclaredField("agentProps");
+      field.setAccessible(true);
+      redefineClass(instrumentation, supportClass, (owner, method) -> {
+        if ("initAgentProperties".equals(method.name)
+            && "(Ljava/util/Properties;)Ljava/util/Properties;".equals(method.desc)) {
+          Log.trace("Transforming VMSupport#initAgentProperties(Properties)");
+          method.access &= ~Opcodes.ACC_NATIVE;
+          InsnList inject = new InsnList();
+          inject.add(new TypeInsnNode(Opcodes.NEW, "java/util/Properties"));
+          inject.add(new InsnNode(Opcodes.DUP));
+          inject.add(
+              new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/util/Properties", "<init>", "()V",
+                  false));
+          for (Entry<Object, Object> entry : properties.entrySet()) {
+            System.out.println(entry.getKey().toString() + '=' + entry.getValue());
+            inject.add(new InsnNode(Opcodes.DUP));
+            inject.add(new LdcInsnNode(entry.getKey()));
+            inject.add(new LdcInsnNode(entry.getValue()));
+            inject.add(
+                new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/util/Properties", "setProperty",
+                    "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;", false));
+            inject.add(new InsnNode(Opcodes.POP));
+          }
+          inject.add(new InsnNode(Opcodes.ARETURN));
+          method.instructions = inject;
+          return true;
+        }
+        return false;
+      });
+      field.set(null, null);
     } catch (Throwable t) {
       Log.error(t, "Unable to patch {}", className);
     }
@@ -208,9 +250,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     ClassNode node = ClassUtil.getNode(reader, 0);
     boolean redefine = false;
     for (MethodNode mn : node.methods) {
-      if (methodPatcher.patch(node, mn)) {
-        redefine = true;
-      }
+      redefine |= methodPatcher.patch(node, mn);
     }
     if (redefine) {
       byte[] bytecode = ClassUtil.toCode(node, ClassWriter.COMPUTE_FRAMES);
@@ -232,8 +272,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     }
   }
 
-  private static String patchClassPath(String cp, File toRemove) {
-    String separator = File.pathSeparator;
+  private static String patchClassPath(String cp, String separator, File toRemove) {
     for (String entry : cp.split(separator)) {
       File location = new File(entry);
       if (toRemove.equals(location)) {
@@ -246,5 +285,29 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
   private static File getRecafLocation() throws URISyntaxException {
     return new File(StartupPlugin.class.getProtectionDomain()
         .getCodeSource().getLocation().toURI());
+  }
+
+  private static void patchArgumentsList(List<String> args) {
+    boolean foundDisableAttachMechanism = false;
+    boolean foundDisablePerfData = false;
+    for (int i = 0; i < args.size(); i++) {
+      String arg = args.get(i);
+      if (arg.startsWith("-javaagent:")
+          || arg.startsWith("-agentlib:")
+          || arg.startsWith("-agentpath:")
+          || arg.startsWith("-verbose")) {
+        args.remove(i--);
+      } else if (arg.startsWith(ATTACH_FLAG)) {
+        foundDisableAttachMechanism = true;
+      } else if (arg.startsWith(PERF_DATA_FLAG)) {
+        foundDisablePerfData = true;
+      }
+    }
+    if (!foundDisableAttachMechanism) {
+      args.add(0, "-XX:+DisableAttachMechanism");
+    }
+    if (!foundDisablePerfData) {
+      args.add(0, "-XX:-UsePerfData");
+    }
   }
 }
