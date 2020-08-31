@@ -226,7 +226,6 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
               new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/util/Properties", "<init>", "()V",
                   false));
           for (Entry<Object, Object> entry : properties.entrySet()) {
-            System.out.println(entry.getKey().toString() + '=' + entry.getValue());
             inject.add(new InsnNode(Opcodes.DUP));
             inject.add(new LdcInsnNode(entry.getKey()));
             inject.add(new LdcInsnNode(entry.getValue()));
