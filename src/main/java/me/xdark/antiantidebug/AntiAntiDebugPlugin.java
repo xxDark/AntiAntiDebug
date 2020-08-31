@@ -130,7 +130,6 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       redefineClass(instrumentation, jvmClass, (owner, method) -> {
         if ("getVmArguments0".equals(method.name) && "()[Ljava/lang/String;".equals(method.desc)) {
           Log.trace("Transforming VMManagementImpl#getVmArguments0()");
-          method.access &= ~Opcodes.ACC_NATIVE;
           InsnList inject = new InsnList();
           inject.add(new LdcInsnNode(args.size()));
           inject.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
@@ -145,7 +144,6 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
           return true;
         } else if ("getVerboseClass".equals(method.name) && "()Z".equals(method.desc)) {
           Log.trace("Transforming VMManagementImpl#getVerboseClass()");
-          method.access &= ~Opcodes.ACC_NATIVE;
           InsnList inject = new InsnList();
           inject.add(new InsnNode(Opcodes.ICONST_0));
           inject.add(new InsnNode(Opcodes.IRETURN));
