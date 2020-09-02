@@ -57,16 +57,6 @@ public final class Natives {
     }
   }
 
-  private static int indexOf(Object[] arr, Object o) {
-    int j = arr.length;
-    while (j-- > 0) {
-      if (arr[j] == o) {
-        return j;
-      }
-    }
-    return -1;
-  }
-
   static {
     try {
       Field field = Lookup.class.getDeclaredField("IMPL_LOOKUP");

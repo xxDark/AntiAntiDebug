@@ -256,7 +256,6 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
   }
 
   private static void setNativeHooks(Instrumentation instrumentation) {
-    // NOTE: That is VERY expensive, use at your own risk!
     try {
       injectBootstrapClasses();
       setNativeField("instrumentation", instrumentation);
@@ -277,7 +276,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
           Log.trace("Transforming Thread#getThreads()");
           method.access &= ~Opcodes.ACC_NATIVE;
           InsnList inject = new InsnList();
-          inject.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "me/xdark/antiantidebug/Natives",
+          inject.add(new MethodInsnNode(Opcodes.INVOKESTATIC, internalName(NATIVES),
               "getThreads", "()[Ljava/lang/Thread;", false));
           inject.add(new InsnNode(Opcodes.ARETURN));
           method.instructions = inject;
@@ -381,7 +380,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
   private static void loadBootstrapClass(String className, Object unsafe, Method define)
       throws IOException, InvocationTargetException, IllegalAccessException {
     try (InputStream in = AntiAntiDebugPlugin.class.getClassLoader()
-        .getResourceAsStream(className.replace('.', '/') + ".class")) {
+        .getResourceAsStream(internalName(className) + ".class")) {
       if (in == null) {
         throw new RuntimeException("Cannot locate: " + className);
       }
@@ -399,5 +398,9 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     } catch (ClassNotFoundException | NoSuchFieldException | IllegalAccessException ex) {
       throw new InternalError(ex);
     }
+  }
+
+  private static String internalName(String name) {
+    return name.replace('.', '/');
   }
 }
