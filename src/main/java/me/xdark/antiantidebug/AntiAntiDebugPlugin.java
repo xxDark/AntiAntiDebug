@@ -43,8 +43,16 @@ import org.plugface.core.annotations.Plugin;
 @Plugin(name = "AntiAntiDebug")
 public final class AntiAntiDebugPlugin implements StartupPlugin {
 
+  // Record VM structs as soon as possible.
+  static {
+    if (InstrumentationResource.isActive()) {
+      VMStructs.init();
+    }
+  }
+
   private static final boolean DEBUG = false;
   private static final String NATIVES = "me.xdark.antiantidebug.Natives";
+  private static final String INTERNALS = "me.xdark.antiantidebug.InternalsUtil";
   private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
   private static final String ATTACH_FLAG = "-XX:+DisableAttachMechanism";
   private static boolean nativeHooksSet;
@@ -72,7 +80,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
 
   @Override
   public String getVersion() {
-    return "1.0.5";
+    return "1.0.6";
   }
 
   @Override
@@ -375,6 +383,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
             ClassLoader.class,
             ProtectionDomain.class);
     define.setAccessible(true);
+    loadBootstrapClass(INTERNALS, unsafe, define);
     loadBootstrapClass(NATIVES, unsafe, define);
   }
 
@@ -397,7 +406,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       f.setAccessible(true);
       f.set(null, value);
     } catch (ClassNotFoundException | NoSuchFieldException | IllegalAccessException ex) {
-      throw new InternalError(ex);
+      throw new RuntimeException(ex);
     }
   }
 

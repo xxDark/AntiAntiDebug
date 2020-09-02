@@ -3,13 +3,10 @@ package me.xdark.antiantidebug;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.ref.SoftReference;
-import java.lang.reflect.Field;
 import java.util.Arrays;
-import me.coley.recaf.util.Log;
 
 public final class Natives {
 
@@ -43,7 +40,7 @@ public final class Natives {
         resetRedefineCount(threadClass);
         return threads;
       } catch (Throwable t) {
-        throw new InternalError(t);
+        throw new RuntimeException(t);
       }
     }
   }
@@ -53,16 +50,14 @@ public final class Natives {
       MH_SET_REDEFINE_COUNT.invokeExact(klass, 0);
       MH_SET_REFLECTION_DATA.invokeExact(klass, (SoftReference) null);
     } catch (Throwable t) {
-      Log.error(t, "Failed to reset redefine count for: {}", klass);
+      System.err.printf("Failed to reset redefine count for: %s%n", klass);
+      t.printStackTrace();
     }
   }
 
   static {
     try {
-      Field field = Lookup.class.getDeclaredField("IMPL_LOOKUP");
-      field.setAccessible(true);
-      MethodHandles.publicLookup();
-      Lookup lookup = (Lookup) field.get(null);
+      Lookup lookup = InternalsUtil.lookup();
       MH_THREADS = lookup
           .findStatic(Thread.class, "getThreads", MethodType.methodType(Thread[].class));
       MH_SET_REDEFINE_COUNT = lookup.findSetter(Class.class, "classRedefinedCount", Integer.TYPE);
