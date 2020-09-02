@@ -2,16 +2,19 @@ package me.xdark.antiantidebug;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 import java.lang.instrument.UnmodifiableClassException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -22,13 +25,13 @@ import java.util.Properties;
 import me.coley.recaf.control.Controller;
 import me.coley.recaf.plugin.api.StartupPlugin;
 import me.coley.recaf.util.ClassUtil;
+import me.coley.recaf.util.IOUtil;
 import me.coley.recaf.util.Log;
-import me.coley.recaf.util.struct.VMUtil;
+import me.coley.recaf.util.VMUtil;
 import me.coley.recaf.workspace.InstrumentationResource;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -41,8 +44,10 @@ import org.plugface.core.annotations.Plugin;
 public final class AntiAntiDebugPlugin implements StartupPlugin {
 
   private static final boolean DEBUG = false;
+  private static final String NATIVES = "me.xdark.antiantidebug.Natives";
   private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
   private static final String ATTACH_FLAG = "-XX:+DisableAttachMechanism";
+  private static boolean nativeHooksSet;
 
   @Override
   public void onStart(Controller controller) {
@@ -55,6 +60,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
           e.printStackTrace();
         }
       }
+      setNativeHooks(instrumentation);
       patchSystemPaths();
       patchVMManagement(instrumentation);
       hideAttachThread();
@@ -66,7 +72,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
 
   @Override
   public String getVersion() {
-    return "1.0.4";
+    return "1.0.5";
   }
 
   @Override
@@ -118,6 +124,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       List<String> args = new ArrayList<>(
           ManagementFactory.getRuntimeMXBean().getInputArguments());
       patchArgumentsList(args);
+      String[] array = args.toArray(new String[0]);
       RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
       Field field = bean.getClass().getDeclaredField("jvm");
       field.setAccessible(true);
@@ -125,7 +132,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       Class<?> jvmClass = jvm.getClass();
       field = jvmClass.getDeclaredField("vmArgs");
       field.setAccessible(true);
-      field.set(jvm, Arrays.asList(args.toArray(new String[0])));
+      field.set(jvm, Arrays.asList(array));
       redefineClass(instrumentation, jvmClass, (owner, method) -> {
         if ("getVmArguments0".equals(method.name) && "()[Ljava/lang/String;".equals(method.desc)) {
           Log.trace("Transforming VMManagementImpl#getVmArguments0()");
@@ -162,6 +169,9 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     try {
       for (Thread t : Thread.getAllStackTraces().keySet()) {
         if ("Attach Listener".equals(t.getName())) {
+          if (nativeHooksSet) {
+            setNativeField("attachThread", t);
+          }
           t.setName("main");
           Method m = Thread.class.getDeclaredMethod("setNativeName", String.class);
           m.setAccessible(true);
@@ -245,11 +255,47 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     }
   }
 
-  private static void redefineClass(Instrumentation instrumentation, Class<?> klass,
+  private static void setNativeHooks(Instrumentation instrumentation) {
+    // NOTE: That is VERY expensive, use at your own risk!
+    try {
+      injectBootstrapClasses();
+      setNativeField("instrumentation", instrumentation);
+      patchThreads(instrumentation);
+      nativeHooksSet = true;
+    } catch (Throwable t) {
+      Log.error(t, "Unable to set native hooks!");
+    }
+  }
+
+  private static void patchThreads(Instrumentation instrumentation) {
+    try {
+      Class<?> threadClass = Thread.class;
+      ClassNodeWrapper node = getBootstrapNode(threadClass.getName());
+      setNativeField("originalThreadBytecode", node.code);
+      if (redefineClass(instrumentation, node, threadClass, (owner, method) -> {
+        if ("getThreads".equals(method.name) && "()[Ljava/lang/Thread;".equals(method.desc)) {
+          Log.trace("Transforming Thread#getThreads()");
+          method.access &= ~Opcodes.ACC_NATIVE;
+          InsnList inject = new InsnList();
+          inject.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "me/xdark/antiantidebug/Natives",
+              "getThreads", "()[Ljava/lang/Thread;", false));
+          inject.add(new InsnNode(Opcodes.ARETURN));
+          method.instructions = inject;
+          return true;
+        }
+        return false;
+      })) {
+        setNativeField("rewrittenThreadBytecode", node.code);
+      }
+    } catch (Throwable t) {
+      Log.error(t, "Unable to patch Thread#getThreads()!");
+    }
+  }
+
+  private static boolean redefineClass(Instrumentation instrumentation, ClassNodeWrapper node,
+      Class<?> klass,
       MethodPatcher methodPatcher)
       throws UnmodifiableClassException, ClassNotFoundException {
-    ClassReader reader = ClassUtil.fromRuntime(klass.getName());
-    ClassNode node = ClassUtil.getNode(reader, 0);
     boolean redefine = false;
     for (MethodNode mn : node.methods) {
       redefine |= methodPatcher.patch(node, mn);
@@ -257,21 +303,16 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     if (redefine) {
       byte[] bytecode = ClassUtil.toCode(node, ClassWriter.COMPUTE_FRAMES);
       instrumentation.redefineClasses(new ClassDefinition(klass, bytecode));
-      resetRedefineCount(klass);
+      Natives.resetRedefineCount(klass);
+      node.code = bytecode;
     }
+    return redefine;
   }
 
-  private static void resetRedefineCount(Class<?> klass) {
-    try {
-      Field field = Class.class.getDeclaredField("classRedefinedCount");
-      field.setAccessible(true);
-      field.setInt(klass, 0);
-      field = Class.class.getDeclaredField("reflectionData");
-      field.setAccessible(true);
-      field.set(klass, null);
-    } catch (Throwable t) {
-      Log.error(t, "Failed to reset redefine count for: {}", klass);
-    }
+  private static boolean redefineClass(Instrumentation instrumentation, Class<?> klass,
+      MethodPatcher methodPatcher)
+      throws UnmodifiableClassException, ClassNotFoundException {
+    return redefineClass(instrumentation, getBootstrapNode(klass.getName()), klass, methodPatcher);
   }
 
   private static String patchClassPath(String cp, String separator, File toRemove) {
@@ -297,7 +338,9 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       if (arg.startsWith("-javaagent:")
           || arg.startsWith("-agentlib:")
           || arg.startsWith("-agentpath:")
-          || arg.startsWith("-verbose")) {
+          || arg.startsWith("-verbose")
+          || arg.startsWith("-Xrun")
+          || arg.startsWith("-XX:+StartAttachListener")) {
         args.remove(i--);
       } else if (arg.startsWith(ATTACH_FLAG)) {
         foundDisableAttachMechanism = true;
@@ -306,10 +349,55 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
       }
     }
     if (!foundDisableAttachMechanism) {
-      args.add(0, "-XX:+DisableAttachMechanism");
+      args.add(0, ATTACH_FLAG);
     }
     if (!foundDisablePerfData) {
-      args.add(0, "-XX:-UsePerfData");
+      args.add(0, PERF_DATA_FLAG);
+    }
+  }
+
+  private static ClassNodeWrapper getBootstrapNode(String name) {
+    ClassReader reader = ClassUtil.fromRuntime(name);
+    ClassNodeWrapper node = new ClassNodeWrapper();
+    reader.accept(node, 0);
+    node.code = reader.b;
+    return node;
+  }
+
+  private static void injectBootstrapClasses()
+      throws Exception {
+    String unsafeClass = VMUtil.getVmVersion() > 8 ? "jdk.internal.misc.Unsafe" : "sun.misc.Unsafe";
+    Class<?> klass = Class.forName(unsafeClass, true, null);
+    Field field = klass.getDeclaredField("theUnsafe");
+    field.setAccessible(true);
+    Object unsafe = field.get(null);
+    Method define = klass
+        .getDeclaredMethod("defineClass", String.class, byte[].class, Integer.TYPE, Integer.TYPE,
+            ClassLoader.class,
+            ProtectionDomain.class);
+    loadBootstrapClass(NATIVES, unsafe, define);
+  }
+
+  private static void loadBootstrapClass(String className, Object unsafe, Method define)
+      throws IOException, InvocationTargetException, IllegalAccessException {
+    try (InputStream in = AntiAntiDebugPlugin.class.getClassLoader()
+        .getResourceAsStream(className.replace('.', '/') + ".class")) {
+      if (in == null) {
+        throw new RuntimeException("Cannot locate: " + className);
+      }
+      byte[] code = IOUtil.toByteArray(in);
+      define.invoke(unsafe, null, code, 0, code.length, null, null);
+    }
+  }
+
+  private static void setNativeField(String field, Object value) {
+    try {
+      Class<?> klass = Class.forName(NATIVES, true, null);
+      Field f = klass.getDeclaredField(field);
+      f.setAccessible(true);
+      f.set(null, value);
+    } catch (ClassNotFoundException | NoSuchFieldException | IllegalAccessException ex) {
+      throw new InternalError(ex);
     }
   }
 }

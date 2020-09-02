@@ -1,7 +1,7 @@
 apply plugin: 'java'
 
 group 'me.xdark'
-version '1.0.4'
+version '1.0.5'
 
 repositories {
     mavenLocal()
@@ -12,5 +12,5 @@ repositories {
 }
 
 dependencies {
-    compileOnly 'com.github.Col-E:recaf:2.4.1'
+    compileOnly 'com.github.Col-E:recaf:2.6.0'
 }
