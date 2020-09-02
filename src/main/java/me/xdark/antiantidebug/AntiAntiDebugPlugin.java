@@ -43,7 +43,7 @@ import org.plugface.core.annotations.Plugin;
 @Plugin(name = "AntiAntiDebug")
 public final class AntiAntiDebugPlugin implements StartupPlugin {
 
-  private static final boolean DEBUG = true;
+  private static final boolean DEBUG = false;
   private static final String NATIVES = "me.xdark.antiantidebug.Natives";
   private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
   private static final String ATTACH_FLAG = "-XX:+DisableAttachMechanism";
