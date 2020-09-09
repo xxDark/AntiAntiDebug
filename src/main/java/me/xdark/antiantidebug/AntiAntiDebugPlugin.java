@@ -39,6 +39,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
     private static final String INTERNALS = "me.xdark.antiantidebug.InternalsUtil";
     private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
     private static final String ATTACH_FLAG = "-XX:+DisableAttachMechanism";
+    public static final String[] EMPTY_STRING_ARRAY = new String[0];
     private static boolean nativeHooksSet;
 
     // Record VM structs as soon as possible.
@@ -92,7 +93,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
             List<String> args = new ArrayList<>(
                     ManagementFactory.getRuntimeMXBean().getInputArguments());
             patchArgumentsList(args);
-            String[] array = args.toArray(new String[0]);
+            String[] array = args.toArray(EMPTY_STRING_ARRAY);
             RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
             Field field = bean.getClass().getDeclaredField("jvm");
             field.setAccessible(true);
