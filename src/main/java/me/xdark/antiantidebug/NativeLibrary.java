@@ -2,7 +2,7 @@ package me.xdark.antiantidebug;
 
 public interface NativeLibrary {
 
-  long findEntry(String entry);
+    long findEntry(String entry);
 
-  void unload();
+    void unload();
 }

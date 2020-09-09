@@ -10,63 +10,63 @@ import java.util.Arrays;
 
 public final class Natives {
 
-  private static final Object THREAD_LOCK = new Object();
-  private static final MethodHandle MH_THREADS;
-  private static final MethodHandle MH_SET_REDEFINE_COUNT;
-  private static final MethodHandle MH_SET_REFLECTION_DATA;
-  private static final MethodHandle MH_THREAD_REGISTER_NATIVES;
-  static Instrumentation instrumentation;
-  static byte[] originalThreadBytecode;
-  static byte[] rewrittenThreadBytecode;
-  static Thread attachThread;
+    private static final Object THREAD_LOCK = new Object();
+    private static final MethodHandle MH_THREADS;
+    private static final MethodHandle MH_SET_REDEFINE_COUNT;
+    private static final MethodHandle MH_SET_REFLECTION_DATA;
+    private static final MethodHandle MH_THREAD_REGISTER_NATIVES;
+    static Instrumentation instrumentation;
+    static byte[] originalThreadBytecode;
+    static byte[] rewrittenThreadBytecode;
+    static Thread attachThread;
 
-  private Natives() {
-  }
-
-  public static Thread[] getThreads() {
-    synchronized (THREAD_LOCK) {
-      try {
-        Class<?> threadClass = Thread.class;
-        Instrumentation instrumentation = Natives.instrumentation;
-        instrumentation.redefineClasses(new ClassDefinition(threadClass, originalThreadBytecode));
-        resetRedefineCount(threadClass);
-        MH_THREAD_REGISTER_NATIVES.invokeExact();
-        Thread[] threads = (Thread[]) MH_THREADS.invokeExact();
-        Thread t1 = attachThread;
-        if (t1 != null) {
-          threads = Arrays.stream(threads).filter(t -> t != t1).toArray(Thread[]::new);
+    static {
+        try {
+            Lookup lookup = InternalsUtil.lookup();
+            MH_THREADS = lookup
+                    .findStatic(Thread.class, "getThreads", MethodType.methodType(Thread[].class));
+            MH_SET_REDEFINE_COUNT = lookup.findSetter(Class.class, "classRedefinedCount", Integer.TYPE);
+            MH_SET_REFLECTION_DATA = lookup
+                    .findSetter(Class.class, "reflectionData", SoftReference.class);
+            MH_THREAD_REGISTER_NATIVES = lookup
+                    .findStatic(Thread.class, "registerNatives", MethodType.methodType(Void.TYPE));
+        } catch (NoSuchMethodException | IllegalAccessException | NoSuchFieldException ex) {
+            throw new ExceptionInInitializerError(ex);
         }
-        instrumentation.redefineClasses(new ClassDefinition(threadClass, rewrittenThreadBytecode));
-        resetRedefineCount(threadClass);
-        return threads;
-      } catch (Throwable t) {
-        throw new RuntimeException(t);
-      }
     }
-  }
 
-  static void resetRedefineCount(Class<?> klass) {
-    try {
-      MH_SET_REDEFINE_COUNT.invokeExact(klass, 0);
-      MH_SET_REFLECTION_DATA.invokeExact(klass, (SoftReference) null);
-    } catch (Throwable t) {
-      System.err.printf("Failed to reset redefine count for: %s%n", klass);
-      t.printStackTrace();
+    private Natives() {
     }
-  }
 
-  static {
-    try {
-      Lookup lookup = InternalsUtil.lookup();
-      MH_THREADS = lookup
-          .findStatic(Thread.class, "getThreads", MethodType.methodType(Thread[].class));
-      MH_SET_REDEFINE_COUNT = lookup.findSetter(Class.class, "classRedefinedCount", Integer.TYPE);
-      MH_SET_REFLECTION_DATA = lookup
-          .findSetter(Class.class, "reflectionData", SoftReference.class);
-      MH_THREAD_REGISTER_NATIVES = lookup
-          .findStatic(Thread.class, "registerNatives", MethodType.methodType(Void.TYPE));
-    } catch (NoSuchMethodException | IllegalAccessException | NoSuchFieldException ex) {
-      throw new ExceptionInInitializerError(ex);
+    public static Thread[] getThreads() {
+        synchronized (THREAD_LOCK) {
+            try {
+                Class<?> threadClass = Thread.class;
+                Instrumentation instrumentation = Natives.instrumentation;
+                instrumentation.redefineClasses(new ClassDefinition(threadClass, originalThreadBytecode));
+                resetRedefineCount(threadClass);
+                MH_THREAD_REGISTER_NATIVES.invokeExact();
+                Thread[] threads = (Thread[]) MH_THREADS.invokeExact();
+                Thread t1 = attachThread;
+                if (t1 != null) {
+                    threads = Arrays.stream(threads).filter(t -> t != t1).toArray(Thread[]::new);
+                }
+                instrumentation.redefineClasses(new ClassDefinition(threadClass, rewrittenThreadBytecode));
+                resetRedefineCount(threadClass);
+                return threads;
+            } catch (Throwable t) {
+                throw new RuntimeException(t);
+            }
+        }
     }
-  }
+
+    static void resetRedefineCount(Class<?> klass) {
+        try {
+            MH_SET_REDEFINE_COUNT.invokeExact(klass, 0);
+            MH_SET_REFLECTION_DATA.invokeExact(klass, (SoftReference) null);
+        } catch (Throwable t) {
+            System.err.printf("Failed to reset redefine count for: %s%n", klass);
+            t.printStackTrace();
+        }
+    }
 }

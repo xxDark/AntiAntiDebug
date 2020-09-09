@@ -6,5 +6,5 @@ import org.objectweb.asm.tree.MethodNode;
 @FunctionalInterface
 public interface MethodPatcher {
 
-  boolean patch(ClassNode owner, MethodNode method);
+    boolean patch(ClassNode owner, MethodNode method);
 }
