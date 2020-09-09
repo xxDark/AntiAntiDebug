@@ -4,9 +4,9 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 
 final class ClassNodeWrapper extends ClassNode {
-  byte[] code;
+    byte[] code;
 
-  ClassNodeWrapper() {
-    super(Opcodes.ASM8);
-  }
+    ClassNodeWrapper() {
+        super(Opcodes.ASM8);
+    }
 }
