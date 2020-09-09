@@ -60,7 +60,7 @@ public final class NativeLibraryLoader {
                 "Failed to find one of the required paths!: " + Arrays.toString(files));
     }
 
-    private static abstract class Loader {
+    private abstract static class Loader {
 
         protected static final Class<?> CL_NATIVE_LIBRARY;
         protected static final MethodHandle CNSTR_NATIVE_LIBRARY;
