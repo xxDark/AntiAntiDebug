@@ -63,30 +63,30 @@ public final class VMStructs {
         } else {
             NativeLibrary jvm = NativeLibraryLoader.loadJvmLibrary();
             try {
-                gHotSpotVMIntConstantEntryArrayStride = jvm.findEntry("gHotSpotVMIntConstantEntryArrayStride");
-                gHotSpotVMIntConstantEntryNameOffset = jvm.findEntry("gHotSpotVMIntConstantEntryNameOffset");
-                gHotSpotVMIntConstantEntryValueOffset = jvm.findEntry("gHotSpotVMIntConstantEntryValueOffset");
-                gHotSpotVMIntConstants = jvm.findEntry("gHotSpotVMIntConstants");
-                gHotSpotVMLongConstantEntryArrayStride = jvm.findEntry("gHotSpotVMLongConstantEntryArrayStride");
-                gHotSpotVMLongConstantEntryNameOffset = jvm.findEntry("gHotSpotVMLongConstantEntryNameOffset");
-                gHotSpotVMLongConstantEntryValueOffset = jvm.findEntry("gHotSpotVMLongConstantEntryValueOffset");
-                gHotSpotVMLongConstants = jvm.findEntry("gHotSpotVMLongConstants");
-                gHotSpotVMStructEntryAddressOffset = jvm.findEntry("gHotSpotVMStructEntryAddressOffset");
-                gHotSpotVMStructEntryArrayStride = jvm.findEntry("gHotSpotVMStructEntryArrayStride");
-                gHotSpotVMStructEntryFieldNameOffset = jvm.findEntry("gHotSpotVMStructEntryFieldNameOffset");
-                gHotSpotVMStructEntryIsStaticOffset = jvm.findEntry("gHotSpotVMStructEntryIsStaticOffset");
-                gHotSpotVMStructEntryOffsetOffset = jvm.findEntry("gHotSpotVMStructEntryOffsetOffset");
-                gHotSpotVMStructEntryTypeNameOffset = jvm.findEntry("gHotSpotVMStructEntryTypeNameOffset");
-                gHotSpotVMStructEntryTypeStringOffset = jvm.findEntry("gHotSpotVMStructEntryTypeStringOffset");
-                gHotSpotVMStructs = jvm.findEntry("gHotSpotVMStructs");
-                gHotSpotVMTypeEntryArrayStride = jvm.findEntry("gHotSpotVMTypeEntryArrayStride");
-                gHotSpotVMTypeEntryIsIntegerTypeOffset = jvm.findEntry("gHotSpotVMTypeEntryIsIntegerTypeOffset");
-                gHotSpotVMTypeEntryIsOopTypeOffset = jvm.findEntry("gHotSpotVMTypeEntryIsOopTypeOffset");
-                gHotSpotVMTypeEntryIsUnsignedOffset = jvm.findEntry("gHotSpotVMTypeEntryIsUnsignedOffset");
-                gHotSpotVMTypeEntrySizeOffset = jvm.findEntry("gHotSpotVMTypeEntrySizeOffset");
-                gHotSpotVMTypeEntrySuperclassNameOffset = jvm.findEntry("gHotSpotVMTypeEntrySuperclassNameOffset");
-                gHotSpotVMTypeEntryTypeNameOffset = jvm.findEntry("gHotSpotVMTypeEntryTypeNameOffset");
-                gHotSpotVMTypes = jvm.findEntry("gHotSpotVMTypes");
+                gHotSpotVMIntConstantEntryArrayStride = getAddress(jvm.findEntry("gHotSpotVMIntConstantEntryArrayStride"));
+                gHotSpotVMIntConstantEntryNameOffset = getAddress(jvm.findEntry("gHotSpotVMIntConstantEntryNameOffset"));
+                gHotSpotVMIntConstantEntryValueOffset = getAddress(jvm.findEntry("gHotSpotVMIntConstantEntryValueOffset"));
+                gHotSpotVMIntConstants = getAddress(jvm.findEntry("gHotSpotVMIntConstants"));
+                gHotSpotVMLongConstantEntryArrayStride = getAddress(jvm.findEntry("gHotSpotVMLongConstantEntryArrayStride"));
+                gHotSpotVMLongConstantEntryNameOffset = getAddress(jvm.findEntry("gHotSpotVMLongConstantEntryNameOffset"));
+                gHotSpotVMLongConstantEntryValueOffset = getAddress(jvm.findEntry("gHotSpotVMLongConstantEntryValueOffset"));
+                gHotSpotVMLongConstants = getAddress(jvm.findEntry("gHotSpotVMLongConstants"));
+                gHotSpotVMStructEntryAddressOffset = getAddress(jvm.findEntry("gHotSpotVMStructEntryAddressOffset"));
+                gHotSpotVMStructEntryArrayStride = getAddress(jvm.findEntry("gHotSpotVMStructEntryArrayStride"));
+                gHotSpotVMStructEntryFieldNameOffset = getAddress(jvm.findEntry("gHotSpotVMStructEntryFieldNameOffset"));
+                gHotSpotVMStructEntryIsStaticOffset = getAddress(jvm.findEntry("gHotSpotVMStructEntryIsStaticOffset"));
+                gHotSpotVMStructEntryOffsetOffset = getAddress(jvm.findEntry("gHotSpotVMStructEntryOffsetOffset"));
+                gHotSpotVMStructEntryTypeNameOffset = getAddress(jvm.findEntry("gHotSpotVMStructEntryTypeNameOffset"));
+                gHotSpotVMStructEntryTypeStringOffset = getAddress(jvm.findEntry("gHotSpotVMStructEntryTypeStringOffset"));
+                gHotSpotVMStructs = getAddress(jvm.findEntry("gHotSpotVMStructs"));
+                gHotSpotVMTypeEntryArrayStride = getAddress(jvm.findEntry("gHotSpotVMTypeEntryArrayStride"));
+                gHotSpotVMTypeEntryIsIntegerTypeOffset = getAddress(jvm.findEntry("gHotSpotVMTypeEntryIsIntegerTypeOffset"));
+                gHotSpotVMTypeEntryIsOopTypeOffset = getAddress(jvm.findEntry("gHotSpotVMTypeEntryIsOopTypeOffset"));
+                gHotSpotVMTypeEntryIsUnsignedOffset = getAddress(jvm.findEntry("gHotSpotVMTypeEntryIsUnsignedOffset"));
+                gHotSpotVMTypeEntrySizeOffset = getAddress(jvm.findEntry("gHotSpotVMTypeEntrySizeOffset"));
+                gHotSpotVMTypeEntrySuperclassNameOffset = getAddress(jvm.findEntry("gHotSpotVMTypeEntrySuperclassNameOffset"));
+                gHotSpotVMTypeEntryTypeNameOffset = getAddress(jvm.findEntry("gHotSpotVMTypeEntryTypeNameOffset"));
+                gHotSpotVMTypes = getAddress(jvm.findEntry("gHotSpotVMTypes"));
             } finally {
                 jvm.unload();
             }
@@ -97,5 +97,9 @@ public final class VMStructs {
     }
 
     static void init() {
+    }
+    
+    private static long getAddress(long entry) { 
+      return entry == 0L ? 0L : InternalsUtil.unsafe().getLong(entry); 
     }
 }
