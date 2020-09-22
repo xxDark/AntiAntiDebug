@@ -12,5 +12,5 @@ repositories {
 }
 
 dependencies {
-    compileOnly 'com.github.Col-E:recaf:2.6.0'
+    compileOnly 'com.github.Col-E:recaf:2.9.0'
 }
