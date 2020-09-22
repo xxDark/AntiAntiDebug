@@ -36,7 +36,7 @@ import java.util.Map.Entry;
 @Plugin(name = "AntiAntiDebug")
 public final class AntiAntiDebugPlugin implements StartupPlugin {
 
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
     private static final String NATIVES = "me.xdark.antiantidebug.Natives";
     private static final String INTERNALS = "me.xdark.antiantidebug.InternalsUtil";
     private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
