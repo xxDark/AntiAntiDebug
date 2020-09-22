@@ -1,16 +1,16 @@
-apply plugin: 'java'
+    apply plugin: 'java'
 
-group 'me.xdark'
-version '1.0.6'
+    group 'me.xdark'
+    version '1.0.6'
 
-repositories {
-    mavenLocal()
-    mavenCentral()
-    maven {
-        url 'https://jitpack.io'
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        maven {
+            url 'https://jitpack.io'
+        }
     }
-}
 
-dependencies {
-    compileOnly 'com.github.Col-E:recaf:2.6.0'
-}
+    dependencies {
+        compileOnly 'com.github.Col-E:recaf:2.6.0'
+    }

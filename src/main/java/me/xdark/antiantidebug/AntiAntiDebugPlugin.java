@@ -1,6 +1,8 @@
 package me.xdark.antiantidebug;
 
+import com.sun.glass.ui.Application;
 import me.coley.recaf.control.Controller;
+import me.coley.recaf.control.gui.GuiController;
 import me.coley.recaf.plugin.api.StartupPlugin;
 import me.coley.recaf.util.ClassUtil;
 import me.coley.recaf.util.IOUtil;
@@ -34,7 +36,7 @@ import java.util.Map.Entry;
 @Plugin(name = "AntiAntiDebug")
 public final class AntiAntiDebugPlugin implements StartupPlugin {
 
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
     private static final String NATIVES = "me.xdark.antiantidebug.Natives";
     private static final String INTERNALS = "me.xdark.antiantidebug.InternalsUtil";
     private static final String PERF_DATA_FLAG = "-XX:-UsePerfData";
@@ -371,6 +373,16 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
         }
     }
 
+    private static void patchJfx() {
+        try {
+            Field field = Application.class.getDeclaredField("name");
+            field.setAccessible(true);
+            field.set(Application.GetApplication(), "java");
+        } catch (IllegalAccessException | NoSuchFieldException ex) {
+            Log.error(ex, "Unable to reset application name!");
+        }
+    }
+
     private static String internalName(String name) {
         return name.replace('.', '/');
     }
@@ -393,12 +405,15 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
             patchSystemProperties();
             patchVM();
             patchVMSupport(instrumentation);
+            if (controller instanceof GuiController) {
+                patchJfx();
+            }
         }
     }
 
     @Override
     public String getVersion() {
-        return "1.0.7";
+        return "1.0.8";
     }
 
     @Override
