@@ -67,7 +67,14 @@ public final class LoaderInjector {
         String internalName = getClassName(name, classBytes, off, len);
         if (CLASSES.contains(internalName)) {
           ClassLoader fake = getLoader(loader);
-          Class<?> fooled = defineClassImpl(fake, name, classBytes, off, len, domain, source);
+          Class<?> fooled;
+          try {
+            fooled = defineClassImpl(fake, name, classBytes, off, len, domain, source);
+          } catch (Throwable t1) {
+            // throw original throwable
+            throwException(t);
+            return null;
+          }
           try {
             MH_SET_LOADER.invokeExact(fooled, loader);
           } catch (Throwable t1) {
