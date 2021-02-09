@@ -19,6 +19,13 @@ import sun.instrument.InstrumentationImpl;
 import sun.instrument.TransformerManager;
 import sun.misc.Unsafe;
 
+/**
+ * One of the techniques of detecting/preventing attach API
+ * involves an attempt to load in instrumentation classes
+ *
+ * If class loading is unsuccessful, agent is probably attached.
+ * Well, not in our case.
+ */
 public final class LoaderInjector {
 
   private static final Set<String> CLASSES = new HashSet<>(
