@@ -1,6 +1,5 @@
 package me.xdark.antiantidebug;
 
-import com.sun.glass.ui.Application;
 import java.lang.instrument.ClassFileTransformer;
 import me.coley.recaf.control.Controller;
 import me.coley.recaf.control.gui.GuiController;
@@ -404,10 +403,13 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
 
   private static void patchJfx() {
     try {
-      Field field = Application.class.getDeclaredField("name");
+      Class<?> appClass = Class.forName("com.sun.glass.ui.Application");
+      Field field = appClass.getDeclaredField("name");
       field.setAccessible(true);
-      field.set(Application.GetApplication(), "java");
-    } catch (IllegalAccessException | NoSuchFieldException ex) {
+      Method method = appClass.getDeclaredMethod("GetApplication");
+      method.setAccessible(true);
+      field.set(method.invoke(null), "java");
+    } catch (Exception ex) {
       Log.error(ex, "Unable to reset application name!");
     }
   }
@@ -485,7 +487,7 @@ public final class AntiAntiDebugPlugin implements StartupPlugin {
 
   @Override
   public String getVersion() {
-    return "1.0.8";
+    return "1.1.0";
   }
 
   @Override
